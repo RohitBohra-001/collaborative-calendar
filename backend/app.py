@@ -1,14 +1,20 @@
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_jwt_extended import JWTManager
+
+from config import SQLALCHEMY_DATABASE_URI
+from extensions import db
 
 app = Flask(__name__)
 app.config.from_object("config")
 
-db = SQLAlchemy(app)
+db.init_app(app)   
 migrate = Migrate(app, db)
+jwt = JWTManager(app)
 
-import models
+import models      
+from auth import auth_bp
+app.register_blueprint(auth_bp)
 
 @app.route("/")
 def home():
