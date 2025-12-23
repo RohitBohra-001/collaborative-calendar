@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from extensions import db
-from models import Calendar, Event
+from models import Calendar, Event, EventParticipant, User
 from datetime import datetime
 
 calendar_bp = Blueprint("calendar", __name__)
@@ -93,3 +93,89 @@ def list_events(calendar_id):
         }
         for e in events
     ])
+
+@calendar_bp.route("/events/<int:event_id>/participants", methods=["POST"])
+@jwt_required()
+def add_participant(event_id):
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+
+    event = Event.query.filter_by(
+        id=event_id,
+        created_by=user_id
+    ).first()
+
+    if not event:
+        return jsonify({"error": "Event not found or not authorized"}), 404
+
+    participant_user = User.query.filter_by(
+        email=data["email"]
+    ).first()
+
+    if not participant_user:
+        return jsonify({"error": "User not found"}), 404
+
+    existing = EventParticipant.query.filter_by(
+        user_id=participant_user.id,
+        event_id=event.id
+    ).first()
+
+    if existing:
+        return jsonify({"error": "User already invited"}), 400
+
+    participant = EventParticipant(
+        user_id=participant_user.id,
+        event_id=event.id,
+        response="maybe"
+    )
+
+    db.session.add(participant)
+    db.session.commit()
+
+    return jsonify({"message": "User invited"}), 201
+
+@calendar_bp.route("/events/<int:event_id>/participants", methods=["GET"])
+@jwt_required()
+def list_participants(event_id):
+    user_id = int(get_jwt_identity())
+    event = Event.query.filter_by(id=event_id).first()
+
+    if not event:
+        return jsonify({"error": "Event not found"}), 404
+
+    if event.created_by != user_id:
+        return jsonify({"error": "Not authorized"}), 403
+
+    participants = EventParticipant.query.filter_by(
+        event_id=event.id
+    ).all()
+
+    return jsonify([
+        {
+            "user_id": p.user_id,
+            "response": p.response
+        }
+        for p in participants
+    ])
+
+@calendar_bp.route("/events/<int:event_id>/response", methods=["PATCH"])
+@jwt_required()
+def respond_to_event(event_id):
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+
+    participant = EventParticipant.query.filter_by(
+        event_id=event_id,
+        user_id=user_id
+    ).first()
+
+    if not participant:
+        return jsonify({"error": "Not invited to this event"}), 404
+
+    if data["response"] not in ["yes", "no", "maybe"]:
+        return jsonify({"error": "Invalid response"}), 400
+
+    participant.response = data["response"]
+    db.session.commit()
+
+    return jsonify({"message": "Response updated"})
