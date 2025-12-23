@@ -7,6 +7,19 @@ from datetime import datetime
 
 calendar_bp = Blueprint("calendar", __name__)
 
+def has_time_conflict(calendar_id, start_time, end_time, exclude_event_id=None):
+    query = Event.query.filter(
+        Event.calendar_id == calendar_id,
+        Event.start_time < end_time,
+        Event.end_time > start_time
+    )
+
+    if exclude_event_id:
+        query = query.filter(Event.id != exclude_event_id)
+
+    return db.session.query(query.exists()).scalar()
+
+
 @calendar_bp.route("/calendars", methods=["POST"])
 @jwt_required()
 def create_calendar():
@@ -51,6 +64,9 @@ def create_event(calendar_id):
     if not calendar:
         return jsonify({"error": "Calendar not found"}), 404
 
+    if has_time_conflict(calendar.id, datetime.fromisoformat(data["start_time"]), datetime.fromisoformat(data["end_time"])):
+        return jsonify({"error": "Time conflict with another event"}), 409
+
     event = Event(
         calendar_id=calendar.id,
         title=data["title"],
@@ -93,6 +109,50 @@ def list_events(calendar_id):
         }
         for e in events
     ])
+
+@calendar_bp.route("/events/<int:event_id>", methods=["PUT"])
+@jwt_required()
+def update_event(event_id):
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+
+    event = Event.query.filter_by(
+        id=event_id,
+        created_by=user_id
+    ).first()
+
+    if not event:
+        return jsonify({"error": "Event not found or not authorized"}), 404
+
+    if data.get("version_number") != event.version_number:
+        return jsonify({"error": "Event was modified by another user"}), 409
+
+    start_time = datetime.fromisoformat(data["start_time"])
+    end_time = datetime.fromisoformat(data["end_time"])
+
+    if start_time >= end_time:
+        return jsonify({"error": "Invalid time range"}), 400
+
+    if has_time_conflict(
+        event.calendar_id,
+        start_time,
+        end_time,
+        exclude_event_id=event.id
+    ):
+        return jsonify({"error": "Time conflict with another event"}), 409
+
+    event.title = data["title"]
+    event.description = data.get("description")
+    event.start_time = start_time
+    event.end_time = end_time
+    event.version_number += 1
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Event updated",
+        "new_version": event.version_number
+    })
 
 @calendar_bp.route("/events/<int:event_id>/participants", methods=["POST"])
 @jwt_required()
