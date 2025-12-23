@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from extensions import db
-from models import Calendar, Event, EventParticipant, User, Availability
+from models import Calendar, Event, EventParticipant, User, Availability, Notification
 from datetime import datetime
 
 calendar_bp = Blueprint("calendar", __name__)
@@ -147,6 +147,16 @@ def update_event(event_id):
     event.end_time = end_time
     event.version_number += 1
 
+    participants = EventParticipant.query.filter_by(event_id=event.id).all()
+
+    for p in participants:
+        if p.user_id != user_id:
+            notification = Notification(
+                user_id=p.user_id,
+                message=f"Event '{event.title}' was updated"
+            )
+            db.session.add(notification)
+
     db.session.commit()
 
     return jsonify({
@@ -213,6 +223,11 @@ def add_participant(event_id):
     )
 
     db.session.add(participant)
+    notification = Notification(
+        user_id=participant_user.id,
+        message=f"You were invited to event '{event.title}'"
+    )
+    db.session.add(notification)
     db.session.commit()
 
     return jsonify({"message": "User invited"}), 201
@@ -319,3 +334,39 @@ def delete_availability(availability_id):
 
     return jsonify({"message": "Availability deleted"})
 
+@calendar_bp.route("/notifications", methods=["GET"])
+@jwt_required()
+def list_notifications():
+    user_id = int(get_jwt_identity())
+
+    notifications = Notification.query.filter_by(
+        user_id=user_id
+    ).order_by(Notification.created_at.desc()).all()
+
+    return jsonify([
+        {
+            "id": n.id,
+            "message": n.message,
+            "is_read": n.is_read,
+            "created_at": n.created_at.isoformat()
+        }
+        for n in notifications
+    ])
+
+@calendar_bp.route("/notifications/<int:notification_id>/read", methods=["PATCH"])
+@jwt_required()
+def mark_notification_read(notification_id):
+    user_id = int(get_jwt_identity())
+
+    notification = Notification.query.filter_by(
+        id=notification_id,
+        user_id=user_id
+    ).first()
+
+    if not notification:
+        return jsonify({"error": "Notification not found"}), 404
+
+    notification.is_read = True
+    db.session.commit()
+
+    return jsonify({"message": "Notification marked as read"})
