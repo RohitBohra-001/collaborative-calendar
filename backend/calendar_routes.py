@@ -154,6 +154,29 @@ def update_event(event_id):
         "new_version": event.version_number
     })
 
+@calendar_bp.route("/events/<int:event_id>", methods=["DELETE"])
+@jwt_required()
+def delete_event(event_id):
+    user_id = int(get_jwt_identity())
+
+    event = Event.query.filter_by(
+        id=event_id,
+        created_by=user_id
+    ).first()
+
+    if not event:
+        return jsonify({"error": "Event not found or not authorized"}), 404
+
+    # Delete participants first
+    EventParticipant.query.filter_by(event_id=event.id).delete()
+
+    # Delete the event
+    db.session.delete(event)
+    db.session.commit()
+
+    return jsonify({"message": "Event deleted"})
+
+
 @calendar_bp.route("/events/<int:event_id>/participants", methods=["POST"])
 @jwt_required()
 def add_participant(event_id):
