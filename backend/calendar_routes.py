@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from extensions import db
-from models import Calendar, Event, EventParticipant, User
+from models import Calendar, Event, EventParticipant, User, Availability
 from datetime import datetime
 
 calendar_bp = Blueprint("calendar", __name__)
@@ -179,3 +179,60 @@ def respond_to_event(event_id):
     db.session.commit()
 
     return jsonify({"message": "Response updated"})
+
+@calendar_bp.route("/availability", methods=["POST"])
+@jwt_required()
+def add_availability():
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+
+    start_time = datetime.fromisoformat(data["start_time"])
+    end_time = datetime.fromisoformat(data["end_time"])
+
+    if start_time >= end_time:
+        return jsonify({"error": "Invalid time range"}), 400
+
+    availability = Availability(
+        user_id=user_id,
+        start_time=start_time,
+        end_time=end_time
+    )
+
+    db.session.add(availability)
+    db.session.commit()
+
+    return jsonify({"message": "Availability added"}), 201
+
+@calendar_bp.route("/availability", methods=["GET"])
+@jwt_required()
+def list_availability():
+    user_id = int(get_jwt_identity())
+    slots = Availability.query.filter_by(user_id=user_id).all()
+
+    return jsonify([
+        {
+            "id": s.id,
+            "start_time": s.start_time.isoformat(),
+            "end_time": s.end_time.isoformat()
+        }
+        for s in slots
+    ])
+
+@calendar_bp.route("/availability/<int:availability_id>", methods=["DELETE"])
+@jwt_required()
+def delete_availability(availability_id):
+    user_id = int(get_jwt_identity())
+
+    slot = Availability.query.filter_by(
+        id=availability_id,
+        user_id=user_id
+    ).first()
+
+    if not slot:
+        return jsonify({"error": "Availability not found"}), 404
+
+    db.session.delete(slot)
+    db.session.commit()
+
+    return jsonify({"message": "Availability deleted"})
+
