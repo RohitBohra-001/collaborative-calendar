@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models import Calendar, Event, EventParticipant, User, Availability, Notification
 from datetime import datetime
+from extensions import socketio
 
 calendar_bp = Blueprint("calendar", __name__)
 
@@ -157,6 +158,12 @@ def update_event(event_id):
             )
             db.session.add(notification)
 
+            socketio.emit(
+                "notification",
+                {"message": notification.message},
+                room=f"user_{p.user_id}"
+            )
+
     db.session.commit()
 
     return jsonify({
@@ -228,6 +235,13 @@ def add_participant(event_id):
         message=f"You were invited to event '{event.title}'"
     )
     db.session.add(notification)
+    socketio.emit(
+        "notification",
+        {
+            "message": notification.message
+        },
+        room=f"user_{participant_user.id}"
+    )
     db.session.commit()
 
     return jsonify({"message": "User invited"}), 201
