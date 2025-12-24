@@ -1,14 +1,12 @@
-import { useEffect } from "react";
-import { apiRequest } from "./services/api";
+import CalendarPage from "./pages/CalendarPage";
 
 function App() {
-  useEffect(() => {
-    apiRequest("/")
-      .then((res) => console.log("Backend says:", res))
-      .catch((err) => console.error(err));
-  }, []);
-
-  return <h1>Collaborative Calendar</h1>;
+  return (
+    <div>
+      <h1>Collaborative Calendar</h1>
+      <CalendarPage />
+    </div>
+  );
 }
 
 export default App;

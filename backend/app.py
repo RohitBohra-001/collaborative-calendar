@@ -18,7 +18,11 @@ from calendar_routes import calendar_bp
 app.register_blueprint(auth_bp)
 app.register_blueprint(calendar_bp)
 
-CORS(app, supports_credentials=True)
+CORS(
+    app,
+    origins=["http://localhost:5173"],
+    supports_credentials=True
+)
 
 @app.route("/")
 def home():
