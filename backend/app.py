@@ -2,6 +2,7 @@ from flask import Flask
 from flask_migrate import Migrate
 from extensions import db, jwt, socketio
 import socket_events
+from flask_cors import CORS
 
 app = Flask(__name__)
 app.config.from_object("config")
@@ -17,6 +18,7 @@ from calendar_routes import calendar_bp
 app.register_blueprint(auth_bp)
 app.register_blueprint(calendar_bp)
 
+CORS(app, supports_credentials=True)
 
 @app.route("/")
 def home():
